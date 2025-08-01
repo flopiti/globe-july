@@ -55,6 +55,10 @@
         #globe {
             width: 100vw;
             height: 100vh;
+            user-select: none;
+            -webkit-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
         }
         .land { 
             fill: #0066cc; 
@@ -102,9 +106,13 @@
                     .attr('class', 'land')
                     .attr('d', path);
                 
-                // Touchpad controls
+                // Controls
                 let rotation = [0, -20];
                 let scale = initialScale;
+                
+                // Mouse drag variables
+                let isDragging = false;
+                let lastMousePos = null;
                 
                 // Add wheel event listener for touchpad gestures
                 svg.node().addEventListener('wheel', function(event) {
@@ -131,6 +139,89 @@
                     sphere.attr('d', path);
                     svg.selectAll('.land').attr('d', path);
                 }, { passive: false });
+                
+                // Mouse drag controls
+                svg.node().addEventListener('mousedown', function(event) {
+                    isDragging = true;
+                    lastMousePos = [event.clientX, event.clientY];
+                    svg.style('cursor', 'grabbing');
+                });
+                
+                svg.node().addEventListener('mousemove', function(event) {
+                    if (!isDragging || !lastMousePos) return;
+                    
+                    const currentMousePos = [event.clientX, event.clientY];
+                    const deltaX = currentMousePos[0] - lastMousePos[0];
+                    const deltaY = currentMousePos[1] - lastMousePos[1];
+                    
+                    // Convert mouse movement to rotation
+                    // Horizontal movement rotates around Y axis (longitude)
+                    rotation[0] += deltaX * 0.5;
+                    // Vertical movement rotates around X axis (latitude)  
+                    rotation[1] -= deltaY * 0.5;
+                    
+                    // Clamp latitude rotation to prevent flipping
+                    rotation[1] = Math.max(-90, Math.min(90, rotation[1]));
+                    
+                    projection.rotate(rotation);
+                    sphere.attr('d', path);
+                    svg.selectAll('.land').attr('d', path);
+                    
+                    lastMousePos = currentMousePos;
+                });
+                
+                svg.node().addEventListener('mouseup', function(event) {
+                    isDragging = false;
+                    lastMousePos = null;
+                    svg.style('cursor', 'grab');
+                });
+                
+                svg.node().addEventListener('mouseleave', function(event) {
+                    isDragging = false;
+                    lastMousePos = null;
+                    svg.style('cursor', 'grab');
+                });
+                
+                // Set initial cursor
+                svg.style('cursor', 'grab');
+                
+                // Touch drag controls for mobile/tablet
+                let lastTouchPos = null;
+                
+                svg.node().addEventListener('touchstart', function(event) {
+                    event.preventDefault();
+                    if (event.touches.length === 1) {
+                        const touch = event.touches[0];
+                        lastTouchPos = [touch.clientX, touch.clientY];
+                    }
+                }, { passive: false });
+                
+                svg.node().addEventListener('touchmove', function(event) {
+                    event.preventDefault();
+                    if (event.touches.length === 1 && lastTouchPos) {
+                        const touch = event.touches[0];
+                        const currentTouchPos = [touch.clientX, touch.clientY];
+                        const deltaX = currentTouchPos[0] - lastTouchPos[0];
+                        const deltaY = currentTouchPos[1] - lastTouchPos[1];
+                        
+                        // Convert touch movement to rotation
+                        rotation[0] += deltaX * 0.5;
+                        rotation[1] += deltaY * 0.5;
+                        
+                        // Clamp latitude rotation
+                        rotation[1] = Math.max(-90, Math.min(90, rotation[1]));
+                        
+                        projection.rotate(rotation);
+                        sphere.attr('d', path);
+                        svg.selectAll('.land').attr('d', path);
+                        
+                        lastTouchPos = currentTouchPos;
+                    }
+                }, { passive: false });
+                
+                svg.node().addEventListener('touchend', function(event) {
+                    lastTouchPos = null;
+                });
                 
                 // Handle window resize
                 window.addEventListener('resize', function() {

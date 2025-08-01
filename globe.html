@@ -61,8 +61,14 @@
             -ms-user-select: none;
         }
         .land { 
-            fill: #0066cc; 
-            stroke: none; 
+            fill: #2d5a27; 
+            stroke: #1a4c14; 
+            stroke-width: 0.3; 
+        }
+        .lakes { 
+            fill: #4a90e2; 
+            stroke: #357abd; 
+            stroke-width: 0.5; 
         }
         
         .city text {
@@ -212,7 +218,9 @@
         // Smart data loading with caching and optimization
         let currentResolution = '50m';
         let dataCache = {};
+        let lakesCache = {};
         let currentWorldData = null;
+        let currentLakesData = null;
         
                  // Performance optimization: simplify geometry based on zoom level
          function optimizeGeometry(features, scale) {
@@ -230,7 +238,7 @@
              return features; // Use full detail otherwise
          }
         
-        // Load and cache data for a specific resolution
+        // Load and cache land data for a specific resolution
         function loadResolutionData(resolution) {
             const filename = `ne_${resolution}_land.json`;
             
@@ -243,33 +251,78 @@
             return d3.json(filename)
                 .then(function(world) {
                     dataCache[resolution] = world;
-                    document.getElementById('loading-indicator').style.display = 'none';
                     return world;
                 })
                 .catch(function(error) {
-                    document.getElementById('loading-indicator').style.display = 'none';
-                    console.error(`Error loading ${resolution} data:`, error);
+                    console.error(`Error loading ${resolution} land data:`, error);
                     throw error;
                 });
         }
         
+        // Load and cache lakes data for a specific resolution
+        function loadLakesData(resolution) {
+            const filename = `ne_${resolution}_lakes.json`;
+            
+            if (lakesCache[resolution]) {
+                return Promise.resolve(lakesCache[resolution]);
+            }
+            
+            return d3.json(filename)
+                .then(function(lakes) {
+                    lakesCache[resolution] = lakes;
+                    return lakes;
+                })
+                .catch(function(error) {
+                    console.warn(`Lakes data not available for ${resolution} resolution:`, error);
+                    return { type: "FeatureCollection", features: [] }; // Return empty collection if lakes not available
+                });
+        }
+        
+        // Load both land and lakes data for a resolution
+        function loadAllData(resolution) {
+            document.getElementById('loading-indicator').style.display = 'block';
+            
+            return Promise.all([
+                loadResolutionData(resolution),
+                loadLakesData(resolution)
+            ]).then(function([landData, lakesData]) {
+                document.getElementById('loading-indicator').style.display = 'none';
+                return { land: landData, lakes: lakesData };
+            }).catch(function(error) {
+                document.getElementById('loading-indicator').style.display = 'none';
+                throw error;
+            });
+        }
+        
         // Initialize with default resolution
-        loadResolutionData('50m')
-            .then(function(world) {
-                currentWorldData = world;
-                initializeGlobe(world);
+        loadAllData('50m')
+            .then(function(data) {
+                currentWorldData = data.land;
+                currentLakesData = data.lakes;
+                initializeGlobe(data.land, data.lakes);
             });
         
-        function initializeGlobe(world) {
+        function initializeGlobe(world, lakes) {
             // Add land with smart optimization
-            const optimizedFeatures = optimizeGeometry(world.features, scale);
+            const optimizedLandFeatures = optimizeGeometry(world.features, scale);
             
             // Update land data using join for better performance and layering
-                svg.selectAll('.land')
-                .data(optimizedFeatures)
+            svg.selectAll('.land')
+                .data(optimizedLandFeatures)
                 .join('path')
                 .attr('class', 'land')
                 .attr('d', path);
+            
+            // Add lakes with smart optimization
+            if (lakes && lakes.features) {
+                const optimizedLakeFeatures = optimizeGeometry(lakes.features, scale);
+                
+                svg.selectAll('.lakes')
+                    .data(optimizedLakeFeatures)
+                    .join('path')
+                    .attr('class', 'lakes')
+                    .attr('d', path);
+            }
             
             // Add city markers (only if not already added)
             if (svg.selectAll('.city').empty()) {
@@ -334,22 +387,33 @@
                 window.updateCityPositions = updateCityPositions;
         } // Close initializeGlobe function
         
-        // Update land data with optimized rendering
+        // Update land and lakes data with optimized rendering
         function updateLandData() {
             if (!currentWorldData) return;
             
-            const optimizedFeatures = optimizeGeometry(currentWorldData.features, scale);
+            const optimizedLandFeatures = optimizeGeometry(currentWorldData.features, scale);
             
             svg.selectAll('.land')
-                .data(optimizedFeatures)
+                .data(optimizedLandFeatures)
                 .join('path')
                     .attr('class', 'land')
                     .attr('d', path);
             
-            // Ensure cities stay on top after land updates
+            // Update lakes data if available
+            if (currentLakesData && currentLakesData.features) {
+                const optimizedLakeFeatures = optimizeGeometry(currentLakesData.features, scale);
+                
+                svg.selectAll('.lakes')
+                    .data(optimizedLakeFeatures)
+                    .join('path')
+                        .attr('class', 'lakes')
+                        .attr('d', path);
+            }
+            
+            // Ensure cities stay on top after land and lakes updates
             const cityMarkers = svg.selectAll('.city');
             cityMarkers.each(function() {
-                // Re-append to ensure proper z-order (cities on top of land)
+                // Re-append to ensure proper z-order (cities on top of everything)
                 const parent = this.parentNode;
                 parent.appendChild(this);
             });
@@ -365,10 +429,11 @@
             document.querySelectorAll('.resolution-selector').forEach(btn => btn.classList.remove('active'));
             document.getElementById(`res-${newResolution}-btn`).classList.add('active');
             
-            loadResolutionData(newResolution)
-                .then(function(world) {
-                    currentWorldData = world;
-                    initializeGlobe(world);
+            loadAllData(newResolution)
+                .then(function(data) {
+                    currentWorldData = data.land;
+                    currentLakesData = data.lakes;
+                    initializeGlobe(data.land, data.lakes);
                 })
                 .catch(function(error) {
                     console.error('Failed to switch resolution:', error);
@@ -434,6 +499,7 @@
                 projection.rotate(rotation).scale(scale);
                 sphere.attr('d', path);
                 svg.selectAll('.land').attr('d', path);
+                svg.selectAll('.lakes').attr('d', path);
                 if (window.updateCityPositions) window.updateCityPositions();
                 
                 if (progress < 1) {

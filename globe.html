@@ -52,7 +52,7 @@
         */
 
         /* #globe background removed - sphere is now rendered with D3 */
-        #globe {
+        #globe { 
             width: 100vw;
             height: 100vh;
             user-select: none;
@@ -80,6 +80,63 @@
             display: flex;
             flex-direction: column;
             gap: 10px;
+        }
+        
+        /* Resolution selector */
+        .resolution-nav {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1000;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        
+        .resolution-selector {
+            background: rgba(0, 0, 0, 0.8);
+            color: #fff;
+            border: 2px solid #4a9eff;
+            border-radius: 25px;
+            padding: 12px 20px;
+            font-family: Arial, sans-serif;
+            font-weight: bold;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+        }
+        
+        .resolution-selector:hover {
+            background: rgba(74, 158, 255, 0.2);
+            border-color: #fff;
+            transform: translateX(-5px);
+            box-shadow: 0 4px 15px rgba(74, 158, 255, 0.3);
+        }
+        
+        .resolution-selector.active {
+            background: rgba(74, 158, 255, 0.9);
+            border-color: #fff;
+        }
+        
+        .loading-indicator {
+            background: rgba(255, 165, 0, 0.9);
+            color: #fff;
+            border: 2px solid #fff;
+            border-radius: 25px;
+            padding: 12px 20px;
+            font-family: Arial, sans-serif;
+            font-weight: bold;
+            font-size: 14px;
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            animation: pulse 1.5s ease-in-out infinite alternate;
+        }
+        
+        @keyframes pulse {
+            from { opacity: 0.7; }
+            to { opacity: 1; }
         }
         
         .city-button {
@@ -118,6 +175,13 @@
         <button class="city-button" id="montreal-btn">Montreal</button>
         <button class="city-button" id="moscow-btn">Moscow</button>
     </div>
+    
+    <!-- Resolution Selector -->
+    <div class="resolution-nav">
+        <button class="resolution-selector active" id="res-50m-btn">50m - Fast</button>
+        <button class="resolution-selector" id="res-10m-btn">10m - Detailed</button>
+        <div class="loading-indicator" id="loading-indicator" style="display: none;">Loading...</div>
+    </div>
 
     <script src="https://d3js.org/d3.v7.min.js"></script>
     <script>
@@ -145,38 +209,90 @@
             .attr('stroke-width', 1.5)
             .attr('d', path);
         
-        // Load data
-        d3.json('ne_110m_land.json')
+        // Smart data loading with caching and optimization
+        let currentResolution = '50m';
+        let dataCache = {};
+        let currentWorldData = null;
+        
+                 // Performance optimization: simplify geometry based on zoom level
+         function optimizeGeometry(features, scale) {
+             const baseScale = Math.min(width, height) * 0.4;
+             const zoomLevel = scale / baseScale;
+             
+             // Only filter very small features when extremely zoomed out
+             if (zoomLevel < 0.3) {
+                 // When very zoomed out, only skip tiny features
+                 return features.filter((feature, index) => {
+                     return index % 2 === 0 || 
+                            (feature.properties && feature.properties.scalerank && feature.properties.scalerank <= 3);
+                 });
+             }
+             return features; // Use full detail otherwise
+         }
+        
+        // Load and cache data for a specific resolution
+        function loadResolutionData(resolution) {
+            const filename = `ne_${resolution}_land.json`;
+            
+            if (dataCache[resolution]) {
+                return Promise.resolve(dataCache[resolution]);
+            }
+            
+            document.getElementById('loading-indicator').style.display = 'block';
+            
+            return d3.json(filename)
+                .then(function(world) {
+                    dataCache[resolution] = world;
+                    document.getElementById('loading-indicator').style.display = 'none';
+                    return world;
+                })
+                .catch(function(error) {
+                    document.getElementById('loading-indicator').style.display = 'none';
+                    console.error(`Error loading ${resolution} data:`, error);
+                    throw error;
+                });
+        }
+        
+        // Initialize with default resolution
+        loadResolutionData('50m')
             .then(function(world) {
-                // Add land
+                currentWorldData = world;
+                initializeGlobe(world);
+            });
+        
+        function initializeGlobe(world) {
+            // Add land with smart optimization
+            const optimizedFeatures = optimizeGeometry(world.features, scale);
+            
+            // Update land data using join for better performance and layering
                 svg.selectAll('.land')
-                    .data(world.features)
-                    .enter()
-                    .append('path')
-                    .attr('class', 'land')
-                    .attr('d', path);
-                
-                // Add city markers
+                .data(optimizedFeatures)
+                .join('path')
+                .attr('class', 'land')
+                .attr('d', path);
+            
+            // Add city markers (only if not already added)
+            if (svg.selectAll('.city').empty()) {
                 const cities = [
                     { name: "Montreal", coordinates: [-73.5673, 45.5017] },
                     { name: "Moscow", coordinates: [37.6176, 55.7558] }
                 ];
                 
-                const cityMarkers = svg.selectAll('.city')
+                const newCityMarkers = svg.selectAll('.city')
                     .data(cities)
                     .enter()
                     .append('g')
                     .attr('class', 'city');
                 
                 // Add city dots
-                cityMarkers.append('circle')
+                newCityMarkers.append('circle')
                     .attr('r', 3)
                     .attr('fill', '#ff6b6b')
                     .attr('stroke', '#fff')
                     .attr('stroke-width', 1);
                 
                 // Add city labels
-                cityMarkers.append('text')
+                newCityMarkers.append('text')
                     .attr('dx', 8)
                     .attr('dy', 4)
                     .attr('fill', '#fff')
@@ -185,9 +301,20 @@
                     .attr('font-weight', 'bold')
                     .attr('text-shadow', '1px 1px 2px rgba(0,0,0,0.7)')
                     .text(d => d.name);
-                
-                function updateCityPositions() {
-                    cityMarkers.each(function(d) {
+            }
+            
+            // Get city markers for updating positions (works for both new and existing)
+            const cityMarkers = svg.selectAll('.city');
+            
+            // Ensure cities are on top after land updates
+            cityMarkers.each(function() {
+                // Re-append to ensure proper z-order (cities on top of land)
+                const parent = this.parentNode;
+                parent.appendChild(this);
+            });
+            
+            function updateCityPositions() {
+                cityMarkers.each(function(d) {
                         const coords = projection(d.coordinates);
                         if (coords) {
                             d3.select(this)
@@ -203,87 +330,160 @@
                 // Initial city positioning
                 updateCityPositions();
                 
-                // Animation variables
-                let isAnimating = false;
+                // Make updateCityPositions available globally for other functions
+                window.updateCityPositions = updateCityPositions;
+        } // Close initializeGlobe function
+        
+        // Update land data with optimized rendering
+        function updateLandData() {
+            if (!currentWorldData) return;
+            
+            const optimizedFeatures = optimizeGeometry(currentWorldData.features, scale);
+            
+            svg.selectAll('.land')
+                .data(optimizedFeatures)
+                .join('path')
+                    .attr('class', 'land')
+                    .attr('d', path);
+            
+            // Ensure cities stay on top after land updates
+            const cityMarkers = svg.selectAll('.city');
+            cityMarkers.each(function() {
+                // Re-append to ensure proper z-order (cities on top of land)
+                const parent = this.parentNode;
+                parent.appendChild(this);
+            });
+        }
+        
+        // Resolution switching functionality
+        function switchResolution(newResolution) {
+            if (newResolution === currentResolution) return;
+            
+            currentResolution = newResolution;
+            
+            // Update button states
+            document.querySelectorAll('.resolution-selector').forEach(btn => btn.classList.remove('active'));
+            document.getElementById(`res-${newResolution}-btn`).classList.add('active');
+            
+            loadResolutionData(newResolution)
+                .then(function(world) {
+                    currentWorldData = world;
+                    initializeGlobe(world);
+                })
+                .catch(function(error) {
+                    console.error('Failed to switch resolution:', error);
+                });
+        }
+        
+        // Resolution button event listeners
+        document.getElementById('res-50m-btn').addEventListener('click', () => switchResolution('50m'));
+        document.getElementById('res-10m-btn').addEventListener('click', () => switchResolution('10m'));
+        
+        // Animation variables
+        let currentAnimation = null;
+        
+        // City data for animations
+        const cities = [
+            { name: "Montreal", coordinates: [-73.5673, 45.5017] },
+            { name: "Moscow", coordinates: [37.6176, 55.7558] }
+        ];
+        
+        // Smooth animation function
+        function animateToCity(cityName) {
+            const city = cities.find(c => c.name === cityName);
+            if (!city) return;
+            
+            // Cancel current animation if running
+            if (currentAnimation) {
+                cancelAnimationFrame(currentAnimation.frameId);
+            }
+            
+            // Update button states
+            document.querySelectorAll('.city-button').forEach(btn => btn.classList.remove('active'));
+            document.getElementById(cityName.toLowerCase() + '-btn').classList.add('active');
+            
+            // Target rotation to center the city
+            const targetRotation = [-city.coordinates[0], -city.coordinates[1]];
+            const targetScale = Math.min(width, height) * 1.5; // Zoom in nicely
+            
+            // Starting values (current position, not original)
+            const startRotation = [...rotation];
+            const startScale = scale;
+            
+            // Animation duration and easing
+            const duration = 2000; // 2 seconds
+            const startTime = Date.now();
+            
+            function animate() {
+                const elapsed = Date.now() - startTime;
+                const progress = Math.min(elapsed / duration, 1);
                 
-                // Smooth animation function
-                function animateToCity(cityName) {
-                    if (isAnimating) return;
-                    
-                    const city = cities.find(c => c.name === cityName);
-                    if (!city) return;
-                    
-                    isAnimating = true;
-                    
-                    // Update button states
-                    document.querySelectorAll('.city-button').forEach(btn => btn.classList.remove('active'));
-                    document.getElementById(cityName.toLowerCase() + '-btn').classList.add('active');
-                    
-                    // Target rotation to center the city
-                    const targetRotation = [-city.coordinates[0], -city.coordinates[1]];
-                    const targetScale = Math.min(width, height) * 1.5; // Zoom in nicely
-                    
-                    // Starting values
-                    const startRotation = [...rotation];
-                    const startScale = scale;
-                    
-                    // Animation duration and easing
-                    const duration = 2000; // 2 seconds
-                    const startTime = Date.now();
-                    
-                    function animate() {
-                        const elapsed = Date.now() - startTime;
-                        const progress = Math.min(elapsed / duration, 1);
-                        
-                        // Smooth easing function (ease-in-out)
-                        const easeProgress = progress < 0.5 ? 
-                            2 * progress * progress : 
-                            1 - Math.pow(-2 * progress + 2, 3) / 2;
-                        
-                        // Interpolate rotation
-                        rotation[0] = startRotation[0] + (targetRotation[0] - startRotation[0]) * easeProgress;
-                        rotation[1] = startRotation[1] + (targetRotation[1] - startRotation[1]) * easeProgress;
-                        
-                        // Interpolate scale
-                        scale = startScale + (targetScale - startScale) * easeProgress;
-                        
-                        // Apply changes
-                        projection.rotate(rotation).scale(scale);
-                        sphere.attr('d', path);
-                        svg.selectAll('.land').attr('d', path);
-                        updateCityPositions();
-                        
-                        if (progress < 1) {
-                            requestAnimationFrame(animate);
-                        } else {
-                            isAnimating = false;
-                        }
-                    }
-                    
-                    animate();
+                // Smooth easing function (ease-in-out)
+                const easeProgress = progress < 0.5 ? 
+                    2 * progress * progress : 
+                    1 - Math.pow(-2 * progress + 2, 3) / 2;
+                
+                // Interpolate rotation
+                rotation[0] = startRotation[0] + (targetRotation[0] - startRotation[0]) * easeProgress;
+                rotation[1] = startRotation[1] + (targetRotation[1] - startRotation[1]) * easeProgress;
+                
+                // Interpolate scale
+                scale = startScale + (targetScale - startScale) * easeProgress;
+                
+                // Apply changes
+                projection.rotate(rotation).scale(scale);
+                sphere.attr('d', path);
+                svg.selectAll('.land').attr('d', path);
+                if (window.updateCityPositions) window.updateCityPositions();
+                
+                if (progress < 1) {
+                    currentAnimation.frameId = requestAnimationFrame(animate);
+                } else {
+                    currentAnimation = null;
                 }
-                
-                // Button event listeners
-                document.getElementById('montreal-btn').addEventListener('click', () => {
-                    animateToCity('Montreal');
-                });
-                
-                document.getElementById('moscow-btn').addEventListener('click', () => {
-                    animateToCity('Moscow');
-                });
-                
-                // Controls
-                let rotation = [0, -20];
-                let scale = initialScale;
-                
-                // Mouse drag variables
-                let isDragging = false;
-                let lastMousePos = null;
-                
-                // Add wheel event listener for touchpad gestures
-                svg.node().addEventListener('wheel', function(event) {
-                    if (isAnimating) return; // Don't allow interactions during animation
-                    event.preventDefault();
+            }
+            
+            // Store animation info
+            currentAnimation = {
+                frameId: null,
+                target: cityName
+            };
+            
+            animate();
+        }
+        
+        // Button event listeners
+        document.getElementById('montreal-btn').addEventListener('click', () => {
+            animateToCity('Montreal');
+        });
+        
+        document.getElementById('moscow-btn').addEventListener('click', () => {
+            animateToCity('Moscow');
+        });
+        
+        // Controls
+        let rotation = [0, -20];
+        let scale = initialScale;
+        
+        // Mouse drag variables with performance optimization
+        let isDragging = false;
+        let lastMousePos = null;
+        let animationFrame = null;
+        
+        // Throttled update function for better performance
+        function scheduleUpdate() {
+            if (animationFrame) return; // Already scheduled
+            animationFrame = requestAnimationFrame(() => {
+                sphere.attr('d', path);
+                updateLandData(); // Use optimized land data update
+                if (window.updateCityPositions) window.updateCityPositions();
+                animationFrame = null;
+            });
+        }
+        
+        // Add wheel event listener for touchpad gestures
+        svg.node().addEventListener('wheel', function(event) {
+            event.preventDefault();
                     
                     // Vertical scrolling (deltaY) for zooming
                     if (Math.abs(event.deltaY) > Math.abs(event.deltaX)) {
@@ -303,15 +503,12 @@
                         projection.rotate(rotation);
                     }
                     
-                    // Update the globe and sphere
-                    sphere.attr('d', path);
-                    svg.selectAll('.land').attr('d', path);
-                    updateCityPositions();
+                    // Update the globe and sphere (throttled for performance)
+                    scheduleUpdate();
                 }, { passive: false });
                 
                 // Mouse drag controls
                 svg.node().addEventListener('mousedown', function(event) {
-                    if (isAnimating) return; // Don't allow drag during animation
                     isDragging = true;
                     lastMousePos = [event.clientX, event.clientY];
                     svg.style('cursor', 'grabbing');
@@ -335,9 +532,7 @@
                     rotation[1] = Math.max(-90, Math.min(90, rotation[1]));
                     
                     projection.rotate(rotation);
-                    sphere.attr('d', path);
-                    svg.selectAll('.land').attr('d', path);
-                    updateCityPositions();
+                    scheduleUpdate();
                     
                     lastMousePos = currentMousePos;
                 });
@@ -361,7 +556,6 @@
                 let lastTouchPos = null;
                 
                 svg.node().addEventListener('touchstart', function(event) {
-                    if (isAnimating) return; // Don't allow touch during animation
                     event.preventDefault();
                     if (event.touches.length === 1) {
                         const touch = event.touches[0];
@@ -386,9 +580,7 @@
                         rotation[1] = Math.max(-90, Math.min(90, rotation[1]));
                         
                         projection.rotate(rotation);
-                        sphere.attr('d', path);
-                        svg.selectAll('.land').attr('d', path);
-                        updateCityPositions();
+                        scheduleUpdate();
                         
                         lastTouchPos = currentTouchPos;
                     }
@@ -404,14 +596,7 @@
                     const newHeight = window.innerHeight;
                     svg.attr('width', newWidth).attr('height', newHeight);
                     projection.translate([newWidth / 2, newHeight / 2]);
-                    sphere.attr('d', path);
-                    svg.selectAll('.land').attr('d', path);
-                    updateCityPositions();
-                });
-                
-            })
-            .catch(function(error) {
-                console.error('Error:', error);
+                    scheduleUpdate();
             });
     </script>
 </body>

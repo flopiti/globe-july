@@ -1,0 +1,33 @@
+{
+  "name": "spinning-globe",
+  "version": "1.0.0",
+  "description": "Interactive spinning globe using Natural Earth land data",
+  "main": "three-globe.html",
+  "scripts": {
+    "start": "python3 serve.py",
+    "serve": "http-server -p 8000 --cors",
+    "dev": "python3 serve.py",
+    "install-server": "npm install -g http-server",
+    "open-d3": "open http://localhost:8000/spinning-globe.html",
+    "open-three": "open http://localhost:8000/three-globe.html"
+  },
+  "keywords": [
+    "globe",
+    "earth",
+    "visualization",
+    "d3js",
+    "threejs",
+    "geojson",
+    "natural-earth"
+  ],
+  "author": "Your Name",
+  "license": "MIT",
+  "devDependencies": {
+    "http-server": "^14.1.1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourusername/spinning-globe.git"
+  },
+  "homepage": "https://github.com/yourusername/spinning-globe#readme"
+}

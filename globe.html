@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Globe</title>
+    <style>
+        body { 
+            margin: 0; 
+            display: flex; 
+            justify-content: center; 
+            align-items: center; 
+            height: 100vh; 
+        }
+        
+        /* Different background options - uncomment one at a time */
+        
+        /* Original dark space */
+        /* background: radial-gradient(circle, #111 0%, #000 100%); */
+        
+        /* Starfield */
+        body {
+            background: #000;
+            background-image: 
+                radial-gradient(circle at 20% 80%, #ffffff 0%, transparent 50%),
+                radial-gradient(circle at 80% 20%, #ffffff 0%, transparent 50%),
+                radial-gradient(circle at 40% 40%, #ffffff 0%, transparent 50%),
+                radial-gradient(circle at 60% 80%, #ffffff 0%, transparent 50%),
+                radial-gradient(circle at 10% 30%, #ffffff 0%, transparent 50%),
+                radial-gradient(circle at 90% 70%, #ffffff 0%, transparent 50%),
+                radial-gradient(circle at 30% 90%, #ffffff 0%, transparent 50%),
+                radial-gradient(circle at 70% 10%, #ffffff 0%, transparent 50%);
+            background-size: 3px 3px, 2px 2px, 1px 1px, 2px 2px, 1px 1px, 2px 2px, 1px 1px, 3px 3px;
+        }
+        
+        /* Blue nebula - uncomment to use
+        body {
+            background: radial-gradient(circle at 30% 30%, rgba(148, 0, 211, 0.3) 0%, transparent 50%),
+                        radial-gradient(circle at 70% 70%, rgba(255, 20, 147, 0.3) 0%, transparent 50%),
+                        radial-gradient(circle at 20% 80%, rgba(0, 191, 255, 0.3) 0%, transparent 50%),
+                        linear-gradient(45deg, #000428 0%, #004e92 100%);
+        }
+        */
+        
+        /* Sunset - uncomment to use
+        body {
+            background: linear-gradient(180deg, #ff7e5f 0%, #feb47b 50%, #ff6b6b 100%);
+        }
+        */
+        
+        /* Ocean - uncomment to use
+        body {
+            background: linear-gradient(180deg, #667db6 0%, #0082c8 50%, #667db6 100%);
+        }
+        */
+
+        #globe { 
+            background: radial-gradient(circle, #000 0%, #000 100%); 
+            border-radius: 50%; 
+        }
+        .land { 
+            fill: #0066cc; 
+            stroke: none; 
+        }
+    </style>
+</head>
+<body>
+    <svg id="globe" width="500" height="500"></svg>
+
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script>
+        const width = 500;
+        const height = 500;
+        const svg = d3.select('#globe');
+        
+        // Create projection
+        const projection = d3.geoOrthographic()
+            .scale(248)
+            .center([0, 0])
+            .rotate([0, -20])
+            .translate([width / 2, height / 2]);
+            
+        const path = d3.geoPath().projection(projection);
+        
+        // Load data
+        d3.json('ne_110m_land.json')
+            .then(function(world) {
+                // Add land
+                svg.selectAll('.land')
+                    .data(world.features)
+                    .enter()
+                    .append('path')
+                    .attr('class', 'land')
+                    .attr('d', path);
+                
+                // Simple rotation
+                let angle = 0;
+                setInterval(() => {
+                    angle += 0.5;
+                    projection.rotate([angle, -20]);
+                    svg.selectAll('path').attr('d', path);
+                }, 30);
+                
+            })
+            .catch(function(error) {
+                console.error('Error:', error);
+            });
+    </script>
+</body>
+</html>

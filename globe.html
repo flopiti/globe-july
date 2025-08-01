@@ -120,18 +120,19 @@
                     
                     // Vertical scrolling (deltaY) for zooming
                     if (Math.abs(event.deltaY) > Math.abs(event.deltaX)) {
-                        const zoomFactor = event.deltaY > 0 ? 0.9 : 1.1;
+                        const zoomFactor = event.deltaY > 0 ? 0.85 : 1.15; // Faster zoom
                         scale *= zoomFactor;
-                        // Limit zoom range - proportional to screen size
-                        const minScale = Math.min(width, height) * 0.1;
-                        const maxScale = Math.min(width, height) * 8;
+                        // Limit zoom range - MASSIVE scale for detailed geography
+                        const minScale = Math.min(width, height) * 0.05;
+                        const maxScale = Math.min(width, height) * 200; // 25x bigger max zoom!
                         scale = Math.max(minScale, Math.min(maxScale, scale));
                         projection.scale(scale);
                     }
                     
                     // Horizontal scrolling (deltaX) for rotation
                     if (Math.abs(event.deltaX) > Math.abs(event.deltaY)) {
-                        rotation[0] += event.deltaX * 0.3;
+                        const sensitivity = initialScale / scale; // Less sensitive when zoomed in
+                        rotation[0] += event.deltaX * 0.3 * sensitivity;
                         projection.rotate(rotation);
                     }
                     
@@ -154,11 +155,12 @@
                     const deltaX = currentMousePos[0] - lastMousePos[0];
                     const deltaY = currentMousePos[1] - lastMousePos[1];
                     
-                    // Convert mouse movement to rotation
+                    // Convert mouse movement to rotation with zoom-based sensitivity
+                    const sensitivity = initialScale / scale; // Less sensitive when zoomed in
                     // Horizontal movement rotates around Y axis (longitude)
-                    rotation[0] += deltaX * 0.5;
+                    rotation[0] += deltaX * 0.5 * sensitivity;
                     // Vertical movement rotates around X axis (latitude)  
-                    rotation[1] -= deltaY * 0.5;
+                    rotation[1] -= deltaY * 0.5 * sensitivity;
                     
                     // Clamp latitude rotation to prevent flipping
                     rotation[1] = Math.max(-90, Math.min(90, rotation[1]));
@@ -204,9 +206,10 @@
                         const deltaX = currentTouchPos[0] - lastTouchPos[0];
                         const deltaY = currentTouchPos[1] - lastTouchPos[1];
                         
-                        // Convert touch movement to rotation
-                        rotation[0] += deltaX * 0.5;
-                        rotation[1] += deltaY * 0.5;
+                        // Convert touch movement to rotation with zoom-based sensitivity
+                        const sensitivity = initialScale / scale; // Less sensitive when zoomed in
+                        rotation[0] += deltaX * 0.5 * sensitivity;
+                        rotation[1] -= deltaY * 0.5 * sensitivity;
                         
                         // Clamp latitude rotation
                         rotation[1] = Math.max(-90, Math.min(90, rotation[1]));

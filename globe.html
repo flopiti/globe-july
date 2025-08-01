@@ -5,9 +5,8 @@
     <style>
         body { 
             margin: 0; 
-            display: flex; 
-            justify-content: center; 
-            align-items: center; 
+            padding: 0;
+            overflow: hidden;
             height: 100vh; 
         }
         
@@ -115,8 +114,10 @@
                     if (Math.abs(event.deltaY) > Math.abs(event.deltaX)) {
                         const zoomFactor = event.deltaY > 0 ? 0.9 : 1.1;
                         scale *= zoomFactor;
-                        // Limit zoom range - much higher max for detailed zooming
-                        scale = Math.max(100, Math.min(8000, scale));
+                        // Limit zoom range - proportional to screen size
+                        const minScale = Math.min(width, height) * 0.1;
+                        const maxScale = Math.min(width, height) * 8;
+                        scale = Math.max(minScale, Math.min(maxScale, scale));
                         projection.scale(scale);
                     }
                     
@@ -130,6 +131,16 @@
                     sphere.attr('d', path);
                     svg.selectAll('.land').attr('d', path);
                 }, { passive: false });
+                
+                // Handle window resize
+                window.addEventListener('resize', function() {
+                    const newWidth = window.innerWidth;
+                    const newHeight = window.innerHeight;
+                    svg.attr('width', newWidth).attr('height', newHeight);
+                    projection.translate([newWidth / 2, newHeight / 2]);
+                    sphere.attr('d', path);
+                    svg.selectAll('.land').attr('d', path);
+                });
                 
             })
             .catch(function(error) {
